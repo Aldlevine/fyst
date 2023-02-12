@@ -1,15 +1,22 @@
 from collections import UserList
 from typing import NamedTuple, TypeVar
 
+
 class Point(NamedTuple):
     x: int
     y: int
 
+
 point_ = Point | tuple[int, int] | list[int]
 
+_broadcastable = (point_ | int | slice | tuple[int, slice] | tuple[slice, int]
+                  | tuple[slice, slice])
 
 T = TypeVar("T")
+
+
 class Grid(UserList[list[T]]):
+
     @classmethod
     def from_str(cls, s: str, blank: str = " ") -> "Grid[str]":
         data: list[list[str]] = [list(l) for l in s.split("\n")]
@@ -25,7 +32,7 @@ class Grid(UserList[list[T]]):
     def full(cls, size: point_, value: T) -> "Grid[T]":
         grid = Grid[T]()
         grid.resize(size, value)
-        grid[:,:] = value
+        grid[:, :] = value
         return grid
 
     @property
@@ -48,14 +55,14 @@ class Grid(UserList[list[T]]):
 
         if oh < nh:
             for col in self:
-                col.extend([value]*(nh-oh))
+                col.extend([value] * (nh - oh))
         elif oh > nh:
             for i, col in enumerate(self):
                 self.data[i] = col[:nh]
 
         if ow < nw:
             new_col: list[T] = [value] * nh
-            new_cols = [new_col.copy() for _ in range(nw-ow)]
+            new_cols = [new_col.copy() for _ in range(nw - ow)]
             self.data.extend(new_cols)
         elif ow > nw:
             for _ in range(nw, ow):
@@ -64,7 +71,7 @@ class Grid(UserList[list[T]]):
         return self
 
     def transpose(self) -> "Grid[T]":
-        col: list[T] = [None]*self.width # type: ignore
+        col: list[T] = [None] * self.width  # type: ignore
         data: list[list[T]] = [col.copy() for _ in range(self.height)]
         for x in range(self.width):
             for y in range(self.height):
@@ -72,13 +79,28 @@ class Grid(UserList[list[T]]):
         self.data = data
         return self
 
+    def copy(self) -> "Grid[T]":
+        data: list[list[T]] = [c.copy() for c in self.data]
+        return Grid(data)
+
+    def repeat(self, size: point_) -> "Grid[T]":
+        x, y = size
+        if y > 1:
+            for i, col in enumerate(self.data):
+                self.data[i] = col * y
+        new_cols: list[list[T]] = []
+        for i in range(1, x):
+            new_cols.extend(self.copy().data)
+        self.data.extend(new_cols)
+        return self
+
     def paste(self, pos: point_, grid: "Grid[T]") -> "Grid[T]":
         x, y = pos
         w, h = grid.size
-        self[x:x+w, y:y+h] = grid
+        self[x:x + w, y:y + h] = grid
         return self
 
-    def item(self) -> T | None:
+    def item(self) -> T:
         if self.width != 1 or self.height != 1: raise IndexError
         return self.data[0][0]
 
@@ -87,22 +109,28 @@ class Grid(UserList[list[T]]):
         if self.size != other.size:
             raise IndexError
         if self.size.x == 0 or self.size.y == 0:
-            return self[:,:]
+            return self[:, :]
         data: list[list[T]] = []
         for i, col in enumerate(self.data):
             other_col = other.data[i]
-            data.append([a | b for a,b in zip(col, other_col)]) # type: ignore
+            data.append([
+                a | b  # type: ignore
+                for a, b in zip(col, other_col)
+            ])
         return Grid[T](data)
 
     def __and__(self, other: "Grid[T]") -> "Grid[T]":
         if self.size != other.size:
             raise IndexError
         if self.size.x == 0 or self.size.y == 0:
-            return self[:,:]
+            return self[:, :]
         data: list[list[T]] = []
         for i, col in enumerate(self.data):
             other_col = other.data[i]
-            data.append([a & b for a,b in zip(col, other_col)]) # type: ignore
+            data.append([
+                a & b  # type: ignore
+                for a, b in zip(col, other_col)
+            ])
         return Grid[T](data)
 
     def __repr__(self) -> str:
@@ -113,11 +141,61 @@ class Grid(UserList[list[T]]):
                 s += str(self.data[x][y])
             l.append(s)
         return "\n".join(l)
-        
 
-    def __getitem__(self,
-        pos: point_ | int | slice | tuple[int, int] | tuple[int, slice] | tuple[slice, int] | tuple[slice, slice],
-    ) -> "Grid[T]":
+    def _broadcast_grid(
+        self,
+        pos: _broadcastable,
+        val: "Grid[T]",
+    ) -> tuple[tuple[slice, slice], "Grid[T]"]:
+        # self[#:#:#]
+        if isinstance(pos, int):
+            pos = slice(pos, pos + 1)
+        if isinstance(pos, slice):
+            x_repeat = len(self.data[pos]) if val.width == 1 else 1
+            y_repeat = self.height if val.height == 1 else 1
+            if x_repeat > 1 or y_repeat > 1:
+                val = val.copy().repeat((x_repeat, y_repeat))
+
+            if val.height != self.height: raise IndexError
+            if val.width != len(self.data[pos]): raise IndexError
+
+            x_slice = pos
+            y_slice = slice(None)
+            return (x_slice, y_slice), val
+
+        # self[#:#:#, #:#:#]
+        x, y = pos
+
+        # paste
+        if isinstance(x, int) and isinstance(y, int):
+            x = slice(x, x + val.width)
+            y = slice(y, y + val.height)
+            return (x, y), val
+
+        if isinstance(x, int):
+            x = slice(x, x + 1 if x != -1 else None)
+        if isinstance(y, int):
+            y = slice(y, y + 1 if y != -1 else None)
+        x_repeat = len(self.data[x]) if val.width == 1 else 1
+        y_repeat = len(self.data[0][y]) if val.height == 1 else 1
+        if x_repeat > 1 or y_repeat > 1:
+            val = val.copy().repeat((x_repeat, y_repeat))
+        if val.width != len(self.data[x]): raise IndexError
+        if val.height != len(self.data[0][y]): raise IndexError
+        return (x, y), val
+
+    def _broadcast(
+        self,
+        pos: _broadcastable,
+        val: T | "Grid[T]",
+    ) -> tuple[tuple[slice, slice], "Grid[T]"]:
+        if isinstance(val, Grid):
+            return self._broadcast_grid(pos, val)  # type: ignore
+        else:
+            return self._broadcast_grid(pos, Grid([[val]]))
+
+    # TODO: return grid view instead of copy
+    def __getitem__(self, pos: _broadcastable) -> "Grid[T]":
         if isinstance(pos, slice):
             start, stop, stride = pos.indices(self.width)
             cols = self.data[start:stop:stride]
@@ -139,111 +217,8 @@ class Grid(UserList[list[T]]):
 
         return self.__class__([[col[y]] for col in cols])
 
-    def _setitem_buffer(
-        self,
-        pos: point_ | int | slice | tuple[int, int] | tuple[int, slice] | tuple[slice, int] | tuple[slice, slice],
-        val: "Grid[T]",
-    ) -> None:
-        # self[#]
-        if isinstance(pos, int):
-            if val.height != self.height: raise IndexError
-
-            if val.width != 1: raise
-            self.data[pos] = val.data[0]
-            return
-
-        # self[#:#:#]
-        if isinstance(pos, slice):
-            if val.height != self.height: raise IndexError
-
-            if val.width == 1:
-                self.data[pos] = [val.data[0]] * len(self.data[pos])
-            else:
-                if val.width != len(self.data[pos]): raise IndexError
-                self.data[pos] = val.data
-            return
-
-
-        x, y = pos
-
-        # self[#, #]
-        if isinstance(x, int) and isinstance(y, int):
-            if val.width != 1 or val.height != 1:
-                self.paste((x, y), val)
-            self.data[x][y] = val.data[0][0]
-
-        # self[#, #:#:#]
-        if isinstance(x, int) and isinstance(y, slice):
-            if val.width != 1: raise IndexError
-            if val.height != len(self.data[x][y]): raise IndexError
-            self.data[x][y] = val.data[0]
-
-        # self[#:#:#, #]
-        if isinstance(x, slice) and isinstance(y, int):
-            rows = self.data[x]
-            if val.width != len(rows): raise IndexError
-            if val.height != 1: raise IndexError
-            for i, row in enumerate(rows):
-                row[y] = val.data[i][0]
-
-        # self[#:#:#, #:#:#]
-        if isinstance(x, slice) and isinstance(y, slice):
-            rows = self.data[x]
-            if val.width != len(rows): raise IndexError
-            if val.height != len(rows[0][y]): raise IndexError
-            for i, row in enumerate(rows):
-                row[y] = val.data[i]
-
-    def _setitem_element(
-        self,
-        pos: point_ | int | slice | tuple[int, int] | tuple[int, slice] | tuple[slice, int] | tuple[slice, slice],
-        val: T
-    ) -> None:
-        # self[#]
-        if isinstance(pos, int):
-            self.data[pos] = [val] * self.height
-            return
-
-        # self[#:#:#]
-        if isinstance(pos, slice):
-            x = [[val] * self.height] * len(self.data[pos])
-            self.data[pos] = x
-            return
-
-        y, x = pos
-
-        # self[#, #]
-        if isinstance(y, int) and isinstance(x, int):
-            # if val.height() != 1 and val.width() != 1: raise IndexError
-            self.data[y][x] = val
-            return
-
-        # self[#, #:#:#]
-        if isinstance(y, int) and isinstance(x, slice):
-            self.data[y][x] = [val] * len(self.data[y][x])
-            return
-
-        # self[#:#:#, #]
-        if isinstance(y, slice) and isinstance(x, int):
-            rows = self.data[y]
-            for row in rows:
-                row[x] = val
-            return
-
-        # self[#:#:#, #:#:#]
-        if isinstance(y, slice) and isinstance(x, slice):
-            rows = self.data[y]
-            for row in rows:
-                row[x] = [val] * len(row[x])
-            return
-
-    def __setitem__(
-        self,
-        pos: point_ | int | slice | tuple[int, int] | tuple[int, slice] | tuple[slice, int] | tuple[slice, slice],
-        val: T | "Grid[T]"
-    ) -> None:
-        if isinstance(val, Grid):
-            self._setitem_buffer(pos, val) # type: ignore
-        else:
-            self._setitem_element(pos, val)
-
+    def __setitem__(self, pos: _broadcastable, val: T | "Grid[T]") -> None:
+        (x, y), val = self._broadcast(pos, val)
+        cols = self.data[x]
+        for i, row in enumerate(cols):
+            row[y] = val.data[i]
