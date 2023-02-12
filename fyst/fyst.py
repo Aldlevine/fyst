@@ -1,6 +1,7 @@
 from collections import UserList
-from dataclasses import dataclass
 from typing import Any, Iterable
+
+import style
 
 
 class Col():
@@ -11,7 +12,7 @@ class Col():
     Attributes:
         value: The value to display
         span: How many columns to span
-        align: Horizontal alignment - `default` | `center` | `left` | `right`
+        align: Horizontal alignment `default` | `center` | `left` | `right`
     """
 
     def __init__(self, value: Any, span: int = 1, align: str = "default") -> None:
@@ -43,7 +44,7 @@ class Row(UserList[Col]):
 
     Attrs:
         data: `Col`s in the row
-        align: Horizontal alignment - `default` | `center` | `left` | `right`
+        align: Horizontal alignment `default` | `center` | `left` | `right`
     """
 
     def __init__(self, *data: Col, align: str = "default") -> None:
@@ -52,12 +53,12 @@ class Row(UserList[Col]):
 
     def render(self, idx: int, table: "Table", col_widths: list[int], align: str) -> str:
         align = align if self.align == "default" else self.align
-        r = table.style.v
+        r = table.style.ud
         col_idx = 0
         for col in self:
             col_width = sum(
-                col_widths[col_idx:col_idx + col.span]) + ((col.span - 1) * (len(table.style.v) + 2))
-            r += " " + col.render(col_width, col_widths, align) + " " + table.style.v
+                col_widths[col_idx:col_idx + col.span]) + ((col.span - 1) * (len(table.style.ud) + 2))
+            r += " " + col.render(col_width, col_widths, align) + " " + table.style.ud
             col_idx += col.span
         return r
 
@@ -101,7 +102,7 @@ class Sep(Row):
 
         inner = ""
         for i, col in enumerate(col_widths):
-            inner += table.style.h * (col + 2)
+            inner += table.style.rl * (col + 2)
             if i < len(col_widths) - 1:
                 if prev_col_indices[i + 1] and next_col_indices[i + 1]:
                     inner += table.style.rlud
@@ -110,7 +111,7 @@ class Sep(Row):
                 elif next_col_indices[i + 1]:
                     inner += table.style.rld
                 else:
-                    inner += table.style.h * len(table.style.v)
+                    inner += table.style.rl * len(table.style.ud)
 
         if idx == 0 or isinstance(prev_row, Blank):
             left_end = table.style.rd
@@ -124,48 +125,6 @@ class Sep(Row):
 
         return left_end + inner + right_end
 
-@dataclass
-class TableStyle:
-    """
-    --------
-    A datatype used to define a table style.
-    """
-
-    v: str
-    h: str
-    rd: str
-    rld: str
-    ld: str
-    rud: str
-    rlud: str
-    lud: str
-    ru: str
-    rlu: str
-    lu: str
-
-BASIC_STYLE = TableStyle(
-    v = "|", h = "-",
-    rd  = "+" , rld  = "+" , ld  = "+",
-    rud = "+" , rlud = "+" , lud = "+",
-    ru  = "+" , rlu  = "+" , lu  = "+",
-)
-"""`TableStyle` using `|`, `-`, and `+` characters"""
-
-BOX_STYLE = TableStyle(
-    v   = "│" , h    = "─",
-    rd  = "┌" , rld  = "┬" , ld  = "┐",
-    rud = "├" , rlud = "┼" , lud = "┤",
-    ru  = "└" , rlu  = "┴" , lu  = "┘",
-)
-"""`TableStyle` using unicode box characters."""
-
-DBL_VERT_BOX_STYLE = TableStyle(
-    v   = "││" , h    = "─",
-    rd  = "┌┬" , rld  = "┬┬" , ld  = "┬┐",
-    rud = "├┼" , rlud = "┼┼" , lud = "┼┤",
-    ru  = "└┴" , rlu  = "┴┴" , lu  = "┴┘",
-)
-"""`TableStyle` using unicode box characters, but with doubled verticals."""
 
 class Table(UserList[Row]):
     """
@@ -174,7 +133,7 @@ class Table(UserList[Row]):
 
     Attrs:
         data: `Row`s in the table
-        align: Horizontal alignment - `default` | `center` | `left` | `right`
+        align: Horizontal alignment `default` | `center` | `left` | `right`
         style: The style used to render the table
     """
 
@@ -182,7 +141,7 @@ class Table(UserList[Row]):
         self,
         *data: Row,
         align: str = "left",
-        style: TableStyle = BOX_STYLE,
+        style: style.TableStyle = style.BOX_STYLE,
     ) -> None:
         super().__init__(data)
         self.align = align
@@ -229,7 +188,7 @@ if __name__ == "__main__":
         Sep(),
 
         align = "center",
-        style = DBL_VERT_BOX_STYLE,
+        style = style.DBL_VERT_BOX_STYLE,
     )
 
     print(t)
