@@ -6,7 +6,10 @@ from grid import Grid, Point, point_
 from style import BOX_STYLE, DBL_VERT_BOX_STYLE, TableStyle
 
 V = TypeVar("V")
+
+
 class _Edges(Generic[V]):
+
     def __init__(
         self,
         *v: V,
@@ -25,14 +28,22 @@ class _Edges(Generic[V]):
             self.l, self.t, self.r, self.b = v
             return
         raise ValueError
+
+
 _edges = _Edges[V] | tuple[V, V, V, V] | tuple[V, V] | V
+
 
 class Padding(_Edges[int]):
     pass
+
+
 _padding = Padding | tuple[int, int, int, int] | tuple[int, int] | int
+
 
 class Border(_Edges[bool]):
     pass
+
+
 _border = Border | tuple[bool, bool, bool, bool] | tuple[bool, bool] | bool
 
 
@@ -44,6 +55,7 @@ class RCSizes(NamedTuple):
 _valign = Literal["top"] | Literal["middle"] | Literal["bottom"]
 _halign = Literal["left"] | Literal["middle"] | Literal["right"]
 
+
 class _Con(IntFlag):
     N = 0
     L = 1
@@ -51,7 +63,9 @@ class _Con(IntFlag):
     R = 4
     D = 8
 
+
 class Cel:
+
     def __init__(
         self,
         value: str = "",
@@ -88,44 +102,56 @@ class Cel:
         for l in lines:
             w = max(len(l), w)
         return Point(
-            w + self.padding.l + self.padding.r + int(1 or self.border.l or self.border.r) * bw,
-            h + self.padding.t + self.padding.b + int(1 or self.border.t or self.border.b),
+            w + self.padding.l + self.padding.r +
+            int(1 or self.border.l or self.border.r) * bw,
+            h + self.padding.t + self.padding.b +
+            int(1 or self.border.t or self.border.b),
         )
 
-    def draw(self, grid: Grid[str], b_grid: Grid[_Con], table: "Table", rc_sizes: RCSizes, r: int, c: int) -> None:
+    def draw(
+        self,
+        grid: Grid[str],
+        b_grid: Grid[_Con],
+        table: "Table",
+        rc_sizes: RCSizes,
+        r: int,
+        c: int,
+    ) -> None:
         bw = table.style.w
         bh = table.style.h
-        w = sum(rc_sizes.cols[c:c+self.span.x]) + bw
-        h = sum(rc_sizes.rows[r:r+self.span.y]) + 1
+        w = sum(rc_sizes.cols[c:c + self.span.x]) + bw
+        h = sum(rc_sizes.rows[r:r + self.span.y]) + 1
         x = sum(rc_sizes.cols[:c])
         y = sum(rc_sizes.rows[:r])
         p = Grid.full((w, h), " ")
         b = Grid.full((w, h), _Con.N)
         if self.border.t:
-            b[1:-1,0] |= Grid.full((w-2, 1), _Con.L | _Con.R)
+            b[1:-1, 0] |= Grid.full((w - 2, 1), _Con.L | _Con.R)
             b.data[0][0] |= _Con.R
             b.data[-1][0] |= _Con.L
         if self.border.b:
-            b[1:-1,-1] |= Grid.full((w-2, 1), _Con.L | _Con.R)
+            b[1:-1, -1] |= Grid.full((w - 2, 1), _Con.L | _Con.R)
             b.data[0][-1] |= _Con.R
             b.data[-1][-1] |= _Con.L
         if self.border.l:
-            b[:bw,1:-1] |= Grid.full((bw, h-2), _Con.U | _Con.D)
-            b[:bw,0] |= Grid.full((bw, 1), _Con.D)
-            b[:bw,-1] |= Grid.full((bw, 1), _Con.U)
+            b[:bw, 1:-1] |= Grid.full((bw, h - 2), _Con.U | _Con.D)
+            b[:bw, 0] |= Grid.full((bw, 1), _Con.D)
+            b[:bw, -1] |= Grid.full((bw, 1), _Con.U)
         if self.border.r:
-            b[-bw:,1:-1] |= Grid.full((bw, h-2), _Con.U | _Con.D)
-            b[-bw:,0] |= Grid.full((bw, 1), _Con.D)
-            b[-bw:,-1] |= Grid.full((bw, 1), _Con.U)
+            b[-bw:, 1:-1] |= Grid.full((bw, h - 2), _Con.U | _Con.D)
+            b[-bw:, 0] |= Grid.full((bw, 1), _Con.D)
+            b[-bw:, -1] |= Grid.full((bw, 1), _Con.U)
         v = Grid.from_str(self.value)
         p[self.padding.l + bw, self.padding.t + 1] = v
-        grid[x , y] = p
-        b_grid[x:x+b.width, y:y+b.height] |= b
+        grid[x, y] = p
+        b_grid[x:x + b.width, y:y + b.height] |= b
+
 
 _cel = Cel | None
 
 
 class Row(UserList[_cel]):
+
     def __init__(
         self,
         *data: _cel,
@@ -140,7 +166,14 @@ class Row(UserList[_cel]):
             w, h = max(w, cw), max(h, ch)
         return Point(w, h)
 
-    def draw(self, grid: Grid[str], b_grid: Grid[_Con], table: "Table", rc_sizes: RCSizes, r: int) -> None:
+    def draw(
+        self,
+        grid: Grid[str],
+        b_grid: Grid[_Con],
+        table: "Table",
+        rc_sizes: RCSizes,
+        r: int,
+    ) -> None:
         c = 0
         for cel in self:
             if cel == None:
@@ -150,10 +183,12 @@ class Row(UserList[_cel]):
             c += cel.span.x
         pass
 
+
 _row = Row | list[_cel] | None
 
 
 class Table(UserList[Row | None]):
+
     def __init__(
         self,
         *data: _row,
@@ -202,8 +237,10 @@ class Table(UserList[Row | None]):
                     x_rem = x_mod if x == 0 else 0
                     for y in range(cel.span.y):
                         y_rem = y_mod if y == 0 else 0
-                        row_sizes[r + y] = max(row_sizes[r + y], size.y // cel.span.y + y_rem)
-                        col_sizes[c + x] = max(col_sizes[c + x], size.x // cel.span.x + x_rem)
+                        row_sizes[r + y] = max(row_sizes[r + y],
+                                               size.y // cel.span.y + y_rem)
+                        col_sizes[c + x] = max(col_sizes[c + x],
+                                               size.x // cel.span.x + x_rem)
                 c += cel.span.x
         return RCSizes(row_sizes, col_sizes)
 
@@ -252,8 +289,8 @@ class Table(UserList[Row | None]):
         b_grid = Grid[_Con]()
         rc_sizes = self.get_rc_sizes()
         width, height = sum(rc_sizes.cols), sum(rc_sizes.rows)
-        grid.resize((width+self.style.w, height+self.style.h), " ")
-        b_grid.resize((width+self.style.w, height+self.style.h), _Con.N)
+        grid.resize((width + self.style.w, height + self.style.h), " ")
+        b_grid.resize((width + self.style.w, height + self.style.h), _Con.N)
         for r, row in enumerate(self):
             if row == None: continue
             row.draw(grid, b_grid, self, rc_sizes, r)
@@ -264,27 +301,31 @@ class Table(UserList[Row | None]):
 
 if __name__ == "__main__":
     child = Table(
-        Row(Cel("AAAA\nAAAA"), Cel("BBBB\nBBBB"), Cel("CCCC\nCCCC")),
-    )
+        Row(
+            Cel("AAAA\nAAAA"),
+            Cel("BBBB\nBBBB"),
+            Cel("CCCC\nCCCC"),
+        ), )
 
     grid = Table(
         Row(
-            Cel("F\nY\nS\nT", span=(1,3)),
+            Cel("F\nY\nS\nT", span=(1, 3)),
             Cel("Format", span=(2, 1), border=False),
             Cel("You"),
         ),
         Row(
             None,
             Cel("Some", span=(1, 2), border=(False, True, False, True)),
-            Cel("Tables", span=(3,1)),
+            Cel("Tables", span=(3, 1)),
         ),
         Row(
             None,
             None,
-            Cel("for\nreal", border=(False,True,True,True)),
-            Cel("good\ntimes", span=(1,3))
+            Cel("for\nreal", border=(False, True, True, True)),
+            Cel("good\ntimes", span=(1, 3)),
         ),
-        style = DBL_VERT_BOX_STYLE,
+        Row(Cel(str(child.render()), span=(2,1)),),
+        style=DBL_VERT_BOX_STYLE,
     )
 
     print(grid.render())
