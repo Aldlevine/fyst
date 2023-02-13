@@ -120,29 +120,29 @@ class Cel:
         bw = table.style.w
         bh = table.style.h
         w = sum(rc_sizes.cols[c:c + self.span.x]) + bw
-        h = sum(rc_sizes.rows[r:r + self.span.y]) + 1
+        h = sum(rc_sizes.rows[r:r + self.span.y]) + bh
         x = sum(rc_sizes.cols[:c])
         y = sum(rc_sizes.rows[:r])
         p = Grid.full((w, h), " ")
         b = Grid.full((w, h), _Con.N)
         if self.border.t:
-            b[1:-1, 0] |= Grid.full((w - 2, 1), _Con.L | _Con.R)
-            b.data[0][0] |= _Con.R
-            b.data[-1][0] |= _Con.L
+            b[1:-1, 0] |= _Con.L | _Con.R
+            b[0, 0] |= _Con.R
+            b[-1, 0] |= _Con.L
         if self.border.b:
-            b[1:-1, -1] |= Grid.full((w - 2, 1), _Con.L | _Con.R)
-            b.data[0][-1] |= _Con.R
-            b.data[-1][-1] |= _Con.L
+            b[1:-1, -1] |= _Con.L | _Con.R
+            b[0, -1] |= _Con.R
+            b[-1, -1] |= _Con.L
         if self.border.l:
-            b[:bw, 1:-1] |= Grid.full((bw, h - 2), _Con.U | _Con.D)
-            b[:bw, 0] |= Grid.full((bw, 1), _Con.D)
-            b[:bw, -1] |= Grid.full((bw, 1), _Con.U)
+            b[:bw, 1:-1] |= _Con.U | _Con.D
+            b[:bw, 0] |= _Con.D
+            b[:bw, -1] |= _Con.U
         if self.border.r:
-            b[-bw:, 1:-1] |= Grid.full((bw, h - 2), _Con.U | _Con.D)
-            b[-bw:, 0] |= Grid.full((bw, 1), _Con.D)
-            b[-bw:, -1] |= Grid.full((bw, 1), _Con.U)
+            b[-bw:, 1:-1] |= _Con.U | _Con.D
+            b[-bw:, 0] |= _Con.D
+            b[-bw:, -1] |= _Con.U
         v = Grid.from_str(self.value)
-        p[self.padding.l + bw, self.padding.t + 1] = v
+        p[self.padding.l + bw, self.padding.t + bh] = v
         grid[x, y] = p
         b_grid[x:x + b.width, y:y + b.height] |= b
 
@@ -245,52 +245,58 @@ class Table(UserList[Row | None]):
         return RCSizes(row_sizes, col_sizes)
 
     def fill_borders(self, grid: Grid[str], b_grid: Grid[_Con]) -> None:
-        for x, col in enumerate(grid.data):
-            for y in range(len(col)):
-                con = b_grid.data[x][y]
+        for x in range(grid.width):
+            for y in range(grid.height):
+                con = b_grid[x, y].item()
                 if con == (_Con.R | _Con.L | _Con.U | _Con.D):
-                    grid.data[x][y] = self.style.rlud
+                    grid[x, y] = self.style.rlud
                     continue
                 if con == (_Con.R | _Con.L | _Con.D):
-                    grid.data[x][y] = self.style.rld
+                    grid[x, y] = self.style.rld
                     continue
                 if con == (_Con.R | _Con.U | _Con.D):
-                    grid.data[x][y] = self.style.rud
+                    grid[x, y] = self.style.rud
                     continue
                 if con == (_Con.L | _Con.U | _Con.D):
-                    grid.data[x][y] = self.style.lud
+                    grid[x, y] = self.style.lud
                     continue
                 if con == (_Con.R | _Con.L | _Con.U):
-                    grid.data[x][y] = self.style.rlu
+                    grid[x, y] = self.style.rlu
                     continue
                 if con == (_Con.U | _Con.D):
-                    grid.data[x][y] = self.style.ud
+                    grid[x, y] = self.style.ud
                     continue
                 if con == (_Con.R | _Con.L):
-                    grid.data[x][y] = self.style.rl
+                    grid[x, y] = self.style.rl
                     continue
                 if con == (_Con.R | _Con.D):
-                    grid.data[x][y] = self.style.rd
+                    grid[x, y] = self.style.rd
                     continue
                 if con == (_Con.L | _Con.D):
-                    grid.data[x][y] = self.style.ld
+                    grid[x, y] = self.style.ld
                     continue
                 if con == (_Con.R | _Con.U):
-                    grid.data[x][y] = self.style.ru
+                    grid[x, y] = self.style.ru
                     continue
                 if con == (_Con.L | _Con.U):
-                    grid.data[x][y] = self.style.lu
+                    grid[x, y] = self.style.lu
                     continue
                 if con > 0:
-                    grid.data[x][y] = str(con.value)
+                    grid[x, y] = str(con.value)
 
     def render(self) -> Grid[str]:
         grid = Grid[str]()
         b_grid = Grid[_Con]()
         rc_sizes = self.get_rc_sizes()
         width, height = sum(rc_sizes.cols), sum(rc_sizes.rows)
-        grid.resize((width + self.style.w, height + self.style.h), " ")
-        b_grid.resize((width + self.style.w, height + self.style.h), _Con.N)
+        grid = Grid.full(
+            (width + self.style.w, height + self.style.h),
+            " ",
+        )
+        b_grid = Grid.full(
+            (width + self.style.w, height + self.style.h),
+            _Con.N,
+        )
         for r, row in enumerate(self):
             if row == None: continue
             row.draw(grid, b_grid, self, rc_sizes, r)
@@ -324,7 +330,7 @@ if __name__ == "__main__":
             Cel("for\nreal", border=(False, True, True, True)),
             Cel("good\ntimes", span=(1, 3)),
         ),
-        Row(Cel(str(child.render()), span=(2,1)),),
+        Row(Cel(str(child.render()), span=(2, 1)), ),
         style=DBL_VERT_BOX_STYLE,
     )
 
