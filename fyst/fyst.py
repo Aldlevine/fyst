@@ -141,7 +141,7 @@ class Table(UserList[Row]):
         self,
         *data: Row,
         align: str = "left",
-        style: style.TableStyle = style.BOX_STYLE,
+        style: style.BorderStyle = style.BOX_STYLE,
     ) -> None:
         super().__init__(data)
         self.align = align

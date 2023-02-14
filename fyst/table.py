@@ -1,62 +1,30 @@
-from collections import UserList
-from enum import IntFlag
-from typing import Generic, Literal, NamedTuple, TypeVar
+from __future__ import annotations as _annotations
 
-from grid import Grid, Point, point_
-from style import BOX_STYLE, DBL_VERT_BOX_STYLE, TableStyle
+from collections import UserList as _UserList
+from enum import IntFlag as _IntFlag
+from typing import Any as _Any
+from typing import NamedTuple as _NamedTuple
 
-V = TypeVar("V")
+from typing_extensions import Unpack as _Unpack
 
-
-class _Edges(Generic[V]):
-
-    def __init__(
-        self,
-        *v: V,
-    ) -> None:
-        if len(v) == 1:
-            self.l = v[0]
-            self.t = v[0]
-            self.r = v[0]
-            self.b = v[0]
-            return
-        if len(v) == 2:
-            self.l, self.t = v
-            self.r, self.b = v
-            return
-        if len(v) == 4:
-            self.l, self.t, self.r, self.b = v
-            return
-        raise ValueError
+from .grid import Grid as _Grid
+from .grid import Point as _Point
+from .grid import PointArg as _PointArg
+from .style import BOX_STYLE as _BOX_STYLE
+from .style import Border as _Border
+from .style import BorderStyle as _BorderStyle
+from .style import Padding as _Padding
+from .style import Style as _Style
+from .style import StyleArg as _StyleArg
+from .style import style_from_style_arg as _style_from_style_arg
 
 
-_edges = _Edges[V] | tuple[V, V, V, V] | tuple[V, V] | V
-
-
-class Padding(_Edges[int]):
-    pass
-
-
-_padding = Padding | tuple[int, int, int, int] | tuple[int, int] | int
-
-
-class Border(_Edges[bool]):
-    pass
-
-
-_border = Border | tuple[bool, bool, bool, bool] | tuple[bool, bool] | bool
-
-
-class RCSizes(NamedTuple):
+class _RCSizes(_NamedTuple):
     rows: list[int]
     cols: list[int]
 
 
-_valign = Literal["top"] | Literal["middle"] | Literal["bottom"]
-_halign = Literal["left"] | Literal["middle"] | Literal["right"]
-
-
-class _Con(IntFlag):
+class _Con(_IntFlag):
     N = 0
     L = 1
     U = 2
@@ -64,150 +32,213 @@ class _Con(IntFlag):
     D = 8
 
 
+def _halign_middle(s: str) -> str:
+    lines = s.split("\n")
+    width = max([len(l) for l in lines])
+    return "\n".join([l.center(width) for l in lines])
+
+
+def _halign_right(s: str) -> str:
+    lines = s.split("\n")
+    width = max([len(l) for l in lines])
+    return "\n".join([l.rjust(width) for l in lines])
+
+
+def _divvy(size: int, sizes: list[int]) -> list[int]:
+    if (len(sizes) == 0):
+        return []
+    size = max(size - sum(sizes), 0)
+    mod = size % len(sizes)
+    div = size // len(sizes)
+    return [sizes[i] + div + max(mod - i, 0) for i in range(len(sizes))]
+
+
 class Cel:
+    """Represents a single cell within a table
+    """
 
     def __init__(
-        self,
-        value: str = "",
-        span: point_ = (1, 1),
-        padding: _padding = (2, 0),
-        border: _border = True,
-        # TODO: implement alignment
-        halign: _halign = "left",
-        valign: _valign = "top",
+            self,
+            value: _Any = "",
+            span: _PointArg = (1, 1),
+            **style: _Unpack[_StyleArg],
     ) -> None:
+        """
+        Args:
+            value: The value displayed by the cel. Will be converted to a string with `str()`.
+            span: The number of cols/rows the cel spans.
+        
+        Keyword Args:
+            padding (padding_): The amount of interior padding applied to each side (l, t, r, b)
+            border (border_): Whether to display the border on each side (l, t, r, b)
+            halign (halign_): The horizontal alignment of the content
+            valign (valign_): The vertical alignment of the content
+        """
         super().__init__()
         self.value = value
-        self.span = Point(*span)
+        """The value the cell will display"""
+        self.span = _Point(*span)
+        """The number of (cols, rows) the cell spans"""
+        self.style = _style_from_style_arg(style)
+        """The style used to render the cell. Each property will cascade from the parent when `None`"""
 
-        if isinstance(padding, Padding):
-            self.padding = padding
-        elif isinstance(padding, tuple):
-            self.padding = Padding(*padding)
-        else:
-            self.padding = Padding(padding)
+    def cascade_style(self, table: Table, row: Row) -> None:
+        style = self.style
+        for k in style:
+            v = style[k]  # type: ignore
+            if v == None:
+                v = row.style[k]  # type: ignore
+            if v == None:
+                v = table.style[k]  # type: ignore
+            style[k] = v
 
-        if isinstance(border, Border):
-            self.border = border
-        elif isinstance(border, tuple):
-            self.border = Border(*border)
-        else:
-            self.border = Border(border)
+        self.cascaded_style = _Style(**style)  # type: ignore
 
-    def get_min_size(self, table: "Table") -> Point:
-        bw = table.style.w
+    def get_min_size(self, table: Table, row: Row) -> _Point:
+        bw = table.border_style.w
+        bh = table.border_style.h
         s = str(self.value)
         lines = s.split("\n")
         w, h = 0, len(lines)
         for l in lines:
             w = max(len(l), w)
-        return Point(
-            w + self.padding.l + self.padding.r +
-            int(1 or self.border.l or self.border.r) * bw,
-            h + self.padding.t + self.padding.b +
-            int(1 or self.border.t or self.border.b),
+        return _Point(
+            w + self.cascaded_style.padding.l + self.cascaded_style.padding.r +
+            int(self.cascaded_style.border.l or self.cascaded_style.border.r) *
+            bw,
+            h + self.cascaded_style.padding.t + self.cascaded_style.padding.b +
+            int(self.cascaded_style.border.t or self.cascaded_style.border.b) *
+            bh,
         )
 
-    def draw(
+    def render(
         self,
-        grid: Grid[str],
-        b_grid: Grid[_Con],
-        table: "Table",
-        rc_sizes: RCSizes,
-        r: int,
-        c: int,
+        grid: _Grid[str],
+        b_grid: _Grid[_Con],
+        table: Table,
     ) -> None:
-        bw = table.style.w
-        bh = table.style.h
-        w = sum(rc_sizes.cols[c:c + self.span.x]) + bw
-        h = sum(rc_sizes.rows[r:r + self.span.y]) + bh
-        x = sum(rc_sizes.cols[:c])
-        y = sum(rc_sizes.rows[:r])
-        p = Grid.full((w, h), " ")
-        b = Grid.full((w, h), _Con.N)
-        if self.border.t:
-            b[1:-1, 0] |= _Con.L | _Con.R
-            b[0, 0] |= _Con.R
-            b[-1, 0] |= _Con.L
-        if self.border.b:
-            b[1:-1, -1] |= _Con.L | _Con.R
-            b[0, -1] |= _Con.R
-            b[-1, -1] |= _Con.L
-        if self.border.l:
-            b[:bw, 1:-1] |= _Con.U | _Con.D
-            b[:bw, 0] |= _Con.D
-            b[:bw, -1] |= _Con.U
-        if self.border.r:
-            b[-bw:, 1:-1] |= _Con.U | _Con.D
-            b[-bw:, 0] |= _Con.D
-            b[-bw:, -1] |= _Con.U
-        v = Grid.from_str(self.value)
-        p[self.padding.l + bw, self.padding.t + bh] = v
-        grid[x, y] = p
-        b_grid[x:x + b.width, y:y + b.height] |= b
+        bw = table.border_style.w
+        bh = table.border_style.h
+        if bh > 0:
+            if self.cascaded_style.border.t:
+                if b_grid.width > 2:
+                    b_grid[1:-1, :bh] |= _Con.L | _Con.R
+                b_grid[0, :bh] |= _Con.R
+                b_grid[-1, :bh] |= _Con.L
+            if self.cascaded_style.border.b:
+                if b_grid.width > 2:
+                    b_grid[1:-1, -bh:] |= _Con.L | _Con.R
+                b_grid[0, -bh:] |= _Con.R
+                b_grid[-1, -bh:] |= _Con.L
+        if bw > 0:
+            if self.cascaded_style.border.l:
+                if b_grid.height > 2:
+                    b_grid[:bw, 1:-1] |= _Con.U | _Con.D
+                b_grid[:bw, 0] |= _Con.D
+                b_grid[:bw, -1] |= _Con.U
+            if self.cascaded_style.border.r:
+                if b_grid.height > 2:
+                    b_grid[-bw:, 1:-1] |= _Con.U | _Con.D
+                b_grid[-bw:, 0] |= _Con.D
+                b_grid[-bw:, -1] |= _Con.U
+
+        s = str(self.value)
+        if self.cascaded_style.halign == "middle":
+            s = _halign_middle(s)
+        elif self.cascaded_style.halign == "right":
+            s = _halign_right(s)
+        v = _Grid.from_str(s)
+
+        x, y = 0, 0
+        if self.cascaded_style.halign == "left":
+            x = self.cascaded_style.padding.l + bw
+        elif self.cascaded_style.halign == "middle":
+            x = (grid.width - v.width) // 2
+        elif self.cascaded_style.halign == "right":
+            x = grid.width - v.width - self.cascaded_style.padding.r - bw
+
+        if self.cascaded_style.valign == "top":
+            y = self.cascaded_style.padding.t + bh
+        elif self.cascaded_style.valign == "middle":
+            y = (grid.height - v.height) // 2
+        elif self.cascaded_style.valign == "bottom":
+            y = grid.height - v.height - self.cascaded_style.padding.b - bh
+
+        grid[x, y] = v
 
 
-_cel = Cel | None
+_cel = _Any
 
 
-class Row(UserList[_cel]):
+class Row(_UserList[_cel]):
 
     def __init__(
         self,
         *data: _cel,
+        **style: _Unpack[_StyleArg],
     ) -> None:
-        super().__init__(data)
+        cels = [
+            c if isinstance(c, Cel) else
+            Cel(padding=0, border=False) if c is None else Cel(c) for c in data
+        ]
+        super().__init__(cels)
+        self.style = _style_from_style_arg(style)
 
-    def get_min_size(self, table: "Table") -> Point:
-        w, h = 0, 0
-        for cel in self:
-            if cel == None: continue
-            cw, ch = cel.get_min_size(table)
-            w, h = max(w, cw), max(h, ch)
-        return Point(w, h)
-
-    def draw(
+    def render(
         self,
-        grid: Grid[str],
-        b_grid: Grid[_Con],
-        table: "Table",
-        rc_sizes: RCSizes,
+        grid: _Grid[str],
+        b_grid: _Grid[_Con],
+        table: Table,
+        rc_sizes: _RCSizes,
         r: int,
     ) -> None:
+        bw = table.border_style.w
+        bh = table.border_style.h
         c = 0
         for cel in self:
-            if cel == None:
+            if not isinstance(cel, Cel):
                 c += 1
                 continue
-            cel.draw(grid, b_grid, table, rc_sizes, r, c)
+            w = sum(rc_sizes.cols[c:c + cel.span.x]) + bw
+            h = sum(rc_sizes.rows[r:r + cel.span.y]) + bh
+            x = sum(rc_sizes.cols[:c])
+            y = sum(rc_sizes.rows[:r])
+            cel.render(grid[x:x + w, y:y + h], b_grid[x:x + w, y:y + h], table)
             c += cel.span.x
-        pass
 
 
 _row = Row | list[_cel] | None
 
 
-class Table(UserList[Row | None]):
+class Table(_UserList[Row]):
 
     def __init__(
         self,
         *data: _row,
-        style: TableStyle = BOX_STYLE,
+        border_style: _BorderStyle = _BOX_STYLE,
+        **style: _Unpack[_StyleArg],
     ) -> None:
-        rows: list[Row | None] = []
+        rows: list[Row] = []
         for row in data:
-            if isinstance(row, (Row, type(None))):
+            if row is None:
+                rows.append(Row())
+            elif isinstance(row, (Row)):
                 rows.append(row)
             else:
                 rows.append(Row(*row))
         super().__init__(rows)
-        self.style = style
+        self.border_style = border_style
+
+        self.style = _style_from_style_arg(style)
+        self.style["border"] = self.style["border"] or _Border(True)
+        self.style["padding"]  = self.style["padding"] or _Padding(3, 0)
+        self.style["halign"] = self.style["halign"] or "left"
+        self.style["valign"] = self.style["valign"] or "top"
 
     @property
-    def size(self) -> Point:
+    def size(self) -> _Point:
         w, h = 0, len(self)
         for r, row in enumerate(reversed(self)):
-            if row == None: continue
             rw = 0
             for col in row:
                 if col == None:
@@ -217,121 +248,102 @@ class Table(UserList[Row | None]):
                 if col.span.y > (r + 1):
                     h += col.span.y - (r + 1)
             w = max(w, rw)
-        return Point(w, h)
+        return _Point(w, h)
 
-    def get_rc_sizes(self) -> RCSizes:
+    @property
+    def grid(self) -> _Grid[str]:
+        if not hasattr(self, "_grid"):
+            self._grid = self._render()
+        return self._grid
+
+    def _render(self) -> _Grid[str]:
+        self._cascade_styles()
+        grid = _Grid[str]()
+        b_grid = _Grid[_Con]()
+        rc_sizes = self._get_rc_sizes()
+        width, height = sum(rc_sizes.cols), sum(rc_sizes.rows)
+        grid = _Grid.full(
+            (width + self.border_style.w, height + self.border_style.h),
+            " ",
+        )
+        b_grid = _Grid.full(
+            (width + self.border_style.w, height + self.border_style.h),
+            _Con.N,
+        )
+        for r, row in enumerate(self):
+            row.render(grid, b_grid, self, rc_sizes, r)
+
+        self._fill_borders(grid, b_grid)
+        return grid
+
+    def _get_rc_sizes(self) -> _RCSizes:
         w, h = self.size
         row_sizes, col_sizes = [0] * h, [0] * w
-        for r, row in enumerate(self):
-            if not isinstance(row, Row):
-                continue
-            c = 0
-            for cel in row:
-                if cel == None:
-                    c += 1
-                    continue
-                size = cel.get_min_size(self)
-                x_mod = size.x % cel.span.x
-                y_mod = size.y % cel.span.y
-                for x in range(cel.span.x):
-                    x_rem = x_mod if x == 0 else 0
-                    for y in range(cel.span.y):
-                        y_rem = y_mod if y == 0 else 0
-                        row_sizes[r + y] = max(row_sizes[r + y],
-                                               size.y // cel.span.y + y_rem)
-                        col_sizes[c + x] = max(col_sizes[c + x],
-                                               size.x // cel.span.x + x_rem)
-                c += cel.span.x
-        return RCSizes(row_sizes, col_sizes)
+        cels = [(r, c, row, cel) for r, row in enumerate(self)
+                for c, cel in enumerate(row) if isinstance(cel, Cel)]
 
-    def fill_borders(self, grid: Grid[str], b_grid: Grid[_Con]) -> None:
+        cels.sort(key=lambda t: t[3].span)
+        for r, c, row, cel in cels:
+            size = cel.get_min_size(self, row)
+            if cel.span.x > 0:
+                col_sizes[c:c + cel.span.x] = _divvy(
+                    size.x, col_sizes[c:c + cel.span.x])
+            if cel.span.y > 0:
+                row_sizes[r:r + cel.span.y] = _divvy(
+                    size.y, row_sizes[r:r + cel.span.y])
+        return _RCSizes(row_sizes, col_sizes)
+
+    def _fill_borders(self, grid: _Grid[str], b_grid: _Grid[_Con]) -> None:
         for x in range(grid.width):
             for y in range(grid.height):
                 con = b_grid[x, y].item()
                 if con == (_Con.R | _Con.L | _Con.U | _Con.D):
-                    grid[x, y] = self.style.rlud
+                    grid[x, y] = self.border_style.rlud
                     continue
                 if con == (_Con.R | _Con.L | _Con.D):
-                    grid[x, y] = self.style.rld
+                    grid[x, y] = self.border_style.rld
                     continue
                 if con == (_Con.R | _Con.U | _Con.D):
-                    grid[x, y] = self.style.rud
+                    grid[x, y] = self.border_style.rud
                     continue
                 if con == (_Con.L | _Con.U | _Con.D):
-                    grid[x, y] = self.style.lud
+                    grid[x, y] = self.border_style.lud
                     continue
                 if con == (_Con.R | _Con.L | _Con.U):
-                    grid[x, y] = self.style.rlu
+                    grid[x, y] = self.border_style.rlu
                     continue
                 if con == (_Con.U | _Con.D):
-                    grid[x, y] = self.style.ud
+                    grid[x, y] = self.border_style.ud
                     continue
                 if con == (_Con.R | _Con.L):
-                    grid[x, y] = self.style.rl
+                    grid[x, y] = self.border_style.rl
                     continue
                 if con == (_Con.R | _Con.D):
-                    grid[x, y] = self.style.rd
+                    grid[x, y] = self.border_style.rd
                     continue
                 if con == (_Con.L | _Con.D):
-                    grid[x, y] = self.style.ld
+                    grid[x, y] = self.border_style.ld
                     continue
                 if con == (_Con.R | _Con.U):
-                    grid[x, y] = self.style.ru
+                    grid[x, y] = self.border_style.ru
                     continue
                 if con == (_Con.L | _Con.U):
-                    grid[x, y] = self.style.lu
+                    grid[x, y] = self.border_style.lu
+                    continue
+                if con & (_Con.R | _Con.L):
+                    grid[x, y] = self.border_style.rl
+                    continue
+                if con & (_Con.U | _Con.D):
+                    grid[x, y] = self.border_style.ud
                     continue
                 if con > 0:
                     grid[x, y] = str(con.value)
 
-    def render(self) -> Grid[str]:
-        grid = Grid[str]()
-        b_grid = Grid[_Con]()
-        rc_sizes = self.get_rc_sizes()
-        width, height = sum(rc_sizes.cols), sum(rc_sizes.rows)
-        grid = Grid.full(
-            (width + self.style.w, height + self.style.h),
-            " ",
-        )
-        b_grid = Grid.full(
-            (width + self.style.w, height + self.style.h),
-            _Con.N,
-        )
-        for r, row in enumerate(self):
-            if row == None: continue
-            row.draw(grid, b_grid, self, rc_sizes, r)
+    def _cascade_styles(self) -> None:
+        for row in self:
+            for cel in row:
+                if not isinstance(cel, Cel): continue
+                cel.cascade_style(self, row)
 
-        self.fill_borders(grid, b_grid)
-        return grid
-
-
-if __name__ == "__main__":
-    child = Table(
-        Row(
-            Cel("AAAA\nAAAA"),
-            Cel("BBBB\nBBBB"),
-            Cel("CCCC\nCCCC"),
-        ), )
-
-    grid = Table(
-        Row(
-            Cel("F\nY\nS\nT", span=(1, 3)),
-            Cel("Format", span=(2, 1), border=False),
-            Cel("You"),
-        ),
-        Row(
-            None,
-            Cel("Some", span=(1, 2), border=(False, True, False, True)),
-            Cel("Tables", span=(3, 1)),
-        ),
-        Row(
-            None,
-            None,
-            Cel("for\nreal", border=(False, True, True, True)),
-            Cel("good\ntimes", span=(1, 3)),
-        ),
-        Row(Cel(str(child.render()), span=(2, 1)), ),
-        style=DBL_VERT_BOX_STYLE,
-    )
-
-    print(grid.render())
+    def __str__(self) -> str:
+        return str(self.grid)
