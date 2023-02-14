@@ -67,7 +67,7 @@ print(t)
 
 ### Details
 
-Similar to it's HTML counterpart, a `Table` is a list of `Row`s which are in turn a list of `Cel`s. To support terse usage, `Row` and `Col` can be elided in favor of `list` and `Any` respectively.
+Similar to it's HTML counterpart, a `Table` is a list of `Row`s which are in turn a list of `Cel`s. To support terse usage, `Row` and `Cel` can be elided in favor of `list` and `Any` respectively.
 
 Styles are cascaded downwards. E.g. the style properties set on the `Table`, will be automatically applied to child `Row`s / `Cel`s, unless the child overrides that property.
 
