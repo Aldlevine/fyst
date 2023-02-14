@@ -1,4 +1,7 @@
+from __future__ import annotations as _annotations
+
 from dataclasses import dataclass as _dataclass
+from typing import Any as _Any
 from typing import Generic as _Generic
 from typing import Literal as _Literal
 from typing import NamedTuple as _NamedTuple
@@ -41,22 +44,25 @@ class Padding(_Edges[int]):
     pass
 
 
-PaddingArg = Padding | tuple[int, int, int, int] | tuple[int, int] | int
+_PaddingArg = Padding | tuple[int, int, int, int] | tuple[int, int] | int
+
+_border = _Literal[0] | _Literal[1]
 
 
-class Border(_Edges[bool]):
+class Border(_Edges[_border]):
     pass
 
 
-BorderArg = Border | tuple[bool, bool, bool, bool] | tuple[bool, bool] | bool
+_BorderArg = Border | tuple[_border, _border, _border,
+                            _border] | tuple[_border, _border] | _border
 
 Valign = _Literal["top"] | _Literal["middle"] | _Literal["bottom"]
 Halign = _Literal["left"] | _Literal["middle"] | _Literal["right"]
 
 
 class StyleArg(_TypedDict):
-    padding: _NotRequired[PaddingArg]
-    border: _NotRequired[BorderArg]
+    padding: _NotRequired[_PaddingArg]
+    border: _NotRequired[_BorderArg]
     halign: _NotRequired[Halign]
     valign: _NotRequired[Valign]
 
@@ -75,32 +81,65 @@ class Style(_NamedTuple):
     valign: Valign
 
 
-def style_from_style_arg(style_arg: StyleArg) -> StyleOpt:
-    padding = style_arg["padding"] if "padding" in style_arg else None
-    border = style_arg["border"] if "border" in style_arg else None
-    halign = style_arg["halign"] if "halign" in style_arg else None
-    valign = style_arg["valign"] if "valign" in style_arg else None
+class Stylable:
 
-    if isinstance(padding, Padding):
-        padding = padding
-    elif isinstance(padding, tuple):
-        padding = Padding(*padding)
-    elif isinstance(padding, int):
-        padding = Padding(padding)
+    def __init__(
+        self,
+        style: StyleArg,
+        *args: _Any,
+        **kwargs: _Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self.padding = style["padding"] if "padding" in style else None
+        self.border = style["border"] if "border" in style else None
+        self.halign = style["halign"] if "halign" in style else None
+        """The element's halign
+        """
+        self.valign = style["valign"] if "valign" in style else None
+        """The element's valign
+        """
 
-    if isinstance(border, Border):
-        border = border
-    elif isinstance(border, tuple):
-        border = Border(*border)
-    elif isinstance(border, int):
-        border = Border(border)
+    def _cascade_style(self, *parents: Stylable) -> None:
+        style = {f: getattr(self, f) for f in Style._fields}
+        for k in Style._fields:
+            v = style[k]
+            for p in parents:
+                if v != None:
+                    break
+                v = getattr(p, k)
+            style[k] = v
 
-    return StyleOpt(
-        padding=padding,
-        border=border,
-        halign=halign,
-        valign=valign,
-    )
+        self.cascaded_style = Style(**style)
+
+    @property
+    def padding(self) -> _Optional[Padding]:
+        return self._padding
+
+    @padding.setter
+    def padding(self, padding: _Optional[_PaddingArg]) -> None:
+        """The element's padding
+        """
+        if isinstance(padding, (Padding, type(None))):
+            padding = padding
+        elif isinstance(padding, tuple):
+            padding = Padding(*padding)
+        else:
+            padding = Padding(padding)
+        self._padding = padding
+
+    @property
+    def border(self) -> _Optional[Border]:
+        return self._border
+
+    @border.setter
+    def border(self, border: _Optional[_BorderArg]) -> None:
+        if isinstance(border, Border):
+            border = border
+        elif isinstance(border, tuple):
+            border = Border(*border)
+        elif isinstance(border, int):
+            border = Border(border)
+        self._border = border
 
 
 @_dataclass

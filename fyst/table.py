@@ -14,9 +14,8 @@ from .style import BOX_STYLE as _BOX_STYLE
 from .style import Border as _Border
 from .style import BorderStyle as _BorderStyle
 from .style import Padding as _Padding
-from .style import Style as _Style
+from .style import Stylable
 from .style import StyleArg as _StyleArg
-from .style import style_from_style_arg as _style_from_style_arg
 
 
 class _RCSizes(_NamedTuple):
@@ -53,7 +52,7 @@ def _divvy(size: int, sizes: list[int]) -> list[int]:
     return [sizes[i] + div + max(mod - i, 0) for i in range(len(sizes))]
 
 
-class Cel:
+class Cel(Stylable):
     """Represents a single cell within a table
     """
 
@@ -69,30 +68,16 @@ class Cel:
             span: The number of cols/rows the cel spans.
         
         Keyword Args:
-            padding (padding_): The amount of interior padding applied to each side (l, t, r, b)
-            border (border_): Whether to display the border on each side (l, t, r, b)
-            halign (halign_): The horizontal alignment of the content
-            valign (valign_): The vertical alignment of the content
+            padding (int, int*2, int*4): The amount of interior padding applied to each side (l, t, r, b)
+            border (int, int*2, int*4): Whether to display the border on each side (l, t, r, b)
+            halign ("left", "middle", "right"): The horizontal alignment of the content
+            valign ("top", "middle", "bottom"): The vertical alignment of the content
         """
-        super().__init__()
+        super().__init__(style)
         self.value = value
         """The value the cell will display"""
         self.span = _Point(*span)
         """The number of (cols, rows) the cell spans"""
-        self.style = _style_from_style_arg(style)
-        """The style used to render the cell. Each property will cascade from the parent when `None`"""
-
-    def cascade_style(self, table: Table, row: Row) -> None:
-        style = self.style
-        for k in style:
-            v = style[k]  # type: ignore
-            if v == None:
-                v = row.style[k]  # type: ignore
-            if v == None:
-                v = table.style[k]  # type: ignore
-            style[k] = v
-
-        self.cascaded_style = _Style(**style)  # type: ignore
 
     def get_min_size(self, table: Table, row: Row) -> _Point:
         bw = table.border_style.w
@@ -170,19 +155,30 @@ class Cel:
 _cel = _Any
 
 
-class Row(_UserList[_cel]):
+class Row(Stylable, _UserList[Cel]):
+    """Represents a single row within a table
+    """
 
     def __init__(
         self,
         *data: _cel,
         **style: _Unpack[_StyleArg],
     ) -> None:
+        """
+        Args:
+            data: The cells within this row
+        
+        Keyword Args:
+            padding (int, int*2, int*4): The amount of interior padding applied to each side (l, t, r, b)
+            border (int, int*2, int*4): Whether to display the border on each side (l, t, r, b)
+            halign ("left", "middle", "right"): The horizontal alignment of the content
+            valign ("top", "middle", "bottom"): The vertical alignment of the content
+        """
         cels = [
             c if isinstance(c, Cel) else
-            Cel(padding=0, border=False) if c is None else Cel(c) for c in data
+            Cel(padding=0, border=0) if c is None else Cel(c) for c in data
         ]
-        super().__init__(cels)
-        self.style = _style_from_style_arg(style)
+        super().__init__(style, cels)
 
     def render(
         self,
@@ -196,9 +192,6 @@ class Row(_UserList[_cel]):
         bh = table.border_style.h
         c = 0
         for cel in self:
-            if not isinstance(cel, Cel):
-                c += 1
-                continue
             w = sum(rc_sizes.cols[c:c + cel.span.x]) + bw
             h = sum(rc_sizes.rows[r:r + cel.span.y]) + bh
             x = sum(rc_sizes.cols[:c])
@@ -210,7 +203,9 @@ class Row(_UserList[_cel]):
 _row = Row | list[_cel] | None
 
 
-class Table(_UserList[Row]):
+class Table(Stylable, _UserList[Row]):
+    """Represents a table
+    """
 
     def __init__(
         self,
@@ -218,6 +213,18 @@ class Table(_UserList[Row]):
         border_style: _BorderStyle = _BOX_STYLE,
         **style: _Unpack[_StyleArg],
     ) -> None:
+        """
+        Args:
+            data: The rows within the table
+            border_style: The set of characters used to draw borders
+        
+        Keyword Args:
+            padding (int, int*2, int*4): The amount of interior padding applied to each side (l, t, r, b)
+            border (int, int*2, int*4): Whether to display the border on each side (l, t, r, b)
+            halign ("left", "middle", "right"): The horizontal alignment of the content
+            valign ("top", "middle", "bottom"): The vertical alignment of the content
+        """
+
         rows: list[Row] = []
         for row in data:
             if row is None:
@@ -226,24 +233,22 @@ class Table(_UserList[Row]):
                 rows.append(row)
             else:
                 rows.append(Row(*row))
-        super().__init__(rows)
+        super().__init__(style, rows)
         self.border_style = border_style
 
-        self.style = _style_from_style_arg(style)
-        self.style["border"] = self.style["border"] or _Border(True)
-        self.style["padding"]  = self.style["padding"] or _Padding(3, 0)
-        self.style["halign"] = self.style["halign"] or "left"
-        self.style["valign"] = self.style["valign"] or "top"
+        self.border = self.border or _Border(1)
+        self.padding = self.padding or _Padding(3, 0)
+        self.halign = self.halign or "left"
+        self.valign = self.valign or "top"
 
     @property
     def size(self) -> _Point:
+        """The size of the table in (cols, rows)
+        """
         w, h = 0, len(self)
         for r, row in enumerate(reversed(self)):
             rw = 0
             for col in row:
-                if col == None:
-                    rw += 1
-                    continue
                 rw += col.span.x
                 if col.span.y > (r + 1):
                     h += col.span.y - (r + 1)
@@ -252,6 +257,8 @@ class Table(_UserList[Row]):
 
     @property
     def grid(self) -> _Grid[str]:
+        """The rendered grid
+        """
         if not hasattr(self, "_grid"):
             self._grid = self._render()
         return self._grid
@@ -280,7 +287,7 @@ class Table(_UserList[Row]):
         w, h = self.size
         row_sizes, col_sizes = [0] * h, [0] * w
         cels = [(r, c, row, cel) for r, row in enumerate(self)
-                for c, cel in enumerate(row) if isinstance(cel, Cel)]
+                for c, cel in enumerate(row)]
 
         cels.sort(key=lambda t: t[3].span)
         for r, c, row, cel in cels:
@@ -342,8 +349,7 @@ class Table(_UserList[Row]):
     def _cascade_styles(self) -> None:
         for row in self:
             for cel in row:
-                if not isinstance(cel, Cel): continue
-                cel.cascade_style(self, row)
+                cel._cascade_style(row, self)
 
     def __str__(self) -> str:
         return str(self.grid)
