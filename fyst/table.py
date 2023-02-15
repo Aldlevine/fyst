@@ -7,6 +7,9 @@ from typing import NamedTuple as _NamedTuple
 
 from typing_extensions import Unpack as _Unpack
 
+from .color import RESET as _RESET
+from .color import NoColor as _NoColor
+from .color import delete_colors as _delete_colors
 from .grid import Grid as _Grid
 from .grid import Point as _Point
 from .grid import PointArg as _PointArg
@@ -31,15 +34,20 @@ class _Con(_IntFlag):
     D = 8
 
 
+def _str_len(s: str) -> int:
+    return len(_delete_colors(s))
+    # return len(s)
+
+
 def _halign_middle(s: str) -> str:
     lines = s.split("\n")
-    width = max([len(l) for l in lines])
+    width = max([_str_len(l) for l in lines])
     return "\n".join([l.center(width) for l in lines])
 
 
 def _halign_right(s: str) -> str:
     lines = s.split("\n")
-    width = max([len(l) for l in lines])
+    width = max([_str_len(l) for l in lines])
     return "\n".join([l.rjust(width) for l in lines])
 
 
@@ -84,9 +92,7 @@ class Cel(Stylable):
         bh = table.border_style.h
         s = str(self.value)
         lines = s.split("\n")
-        w, h = 0, len(lines)
-        for l in lines:
-            w = max(len(l), w)
+        w, h = max([_str_len(l) for l in lines]), len(lines)
         return _Point(
             w + self.cascaded_style.padding.l + self.cascaded_style.padding.r +
             int(self.cascaded_style.border.l or self.cascaded_style.border.r) *
@@ -100,32 +106,51 @@ class Cel(Stylable):
         self,
         grid: _Grid[str],
         b_grid: _Grid[_Con],
+        c_grid: _Grid[str],
         table: Table,
     ) -> None:
         bw = table.border_style.w
         bh = table.border_style.h
+
+        color: str = ""
+        if self.cascaded_style.border_bg != _NoColor:
+            color += format(self.cascaded_style.border_bg, "b")
+        if self.cascaded_style.border_fg != _NoColor:
+            color += format(self.cascaded_style.border_fg, "f")
         if bh > 0:
             if self.cascaded_style.border.t:
                 if b_grid.width > 2:
                     b_grid[1:-1, :bh] |= _Con.L | _Con.R
                 b_grid[0, :bh] |= _Con.R
                 b_grid[-1, :bh] |= _Con.L
+                if color != "":
+                    c_grid[0, :bh] = color
+                    c_grid[-2, :bh] = _RESET
             if self.cascaded_style.border.b:
                 if b_grid.width > 2:
                     b_grid[1:-1, -bh:] |= _Con.L | _Con.R
                 b_grid[0, -bh:] |= _Con.R
                 b_grid[-1, -bh:] |= _Con.L
+                if color != "":
+                    c_grid[0, -bh:] = color
+                    c_grid[-2, -bh:] = _RESET
         if bw > 0:
             if self.cascaded_style.border.l:
                 if b_grid.height > 2:
                     b_grid[:bw, 1:-1] |= _Con.U | _Con.D
                 b_grid[:bw, 0] |= _Con.D
                 b_grid[:bw, -1] |= _Con.U
+                if color != "":
+                    c_grid[0, 1:-1] = color
+                    c_grid[bw, 1:-1] = _RESET
             if self.cascaded_style.border.r:
                 if b_grid.height > 2:
                     b_grid[-bw:, 1:-1] |= _Con.U | _Con.D
                 b_grid[-bw:, 0] |= _Con.D
                 b_grid[-bw:, -1] |= _Con.U
+                if color != "":
+                    c_grid[-bw - 1, :] = color
+                    # c_grid[-1, :] += _RESET
 
         s = str(self.value)
         if self.cascaded_style.halign == "middle":
@@ -148,6 +173,20 @@ class Cel(Stylable):
             y = (grid.height - v.height) // 2
         elif self.cascaded_style.valign == "bottom":
             y = grid.height - v.height - self.cascaded_style.padding.b - bh
+
+        color: str = ""
+        if self.cascaded_style.bg != _NoColor:
+            color += format(self.cascaded_style.bg, "b")
+        if self.cascaded_style.fg != _NoColor:
+            color += format(self.cascaded_style.fg, "f")
+
+        if color != "":
+            c_grid[bw, bh:-bh] = _Grid.full((1, c_grid.height - bh * 2), color)
+            c_grid[-bw, bh:-bh] = _Grid.full((1, c_grid.height - bh * 2),
+                                             _RESET)
+        # c_grid[-2, :] = _RESET
+        # c_grid[1, -1] = _RESET
+        # c_grid[1, 0] = _RESET
 
         grid[x, y] = v
 
@@ -176,7 +215,8 @@ class Row(Stylable, _UserList[Cel]):
         """
         cels = [
             c if isinstance(c, Cel) else
-            Cel(padding=0, border=0) if c is None else Cel(c) for c in data
+            Cel(padding=0, border=0, fg=_NoColor, bg=_NoColor)
+            if c is None else Cel(c) for c in data
         ]
         super().__init__(style, cels)
 
@@ -184,6 +224,7 @@ class Row(Stylable, _UserList[Cel]):
         self,
         grid: _Grid[str],
         b_grid: _Grid[_Con],
+        c_grid: _Grid[str],
         table: Table,
         rc_sizes: _RCSizes,
         r: int,
@@ -196,7 +237,13 @@ class Row(Stylable, _UserList[Cel]):
             h = sum(rc_sizes.rows[r:r + cel.span.y]) + bh
             x = sum(rc_sizes.cols[:c])
             y = sum(rc_sizes.rows[:r])
-            cel.render(grid[x:x + w, y:y + h], b_grid[x:x + w, y:y + h], table)
+            cel.render(
+                grid[x:x + w, y:y + h],
+                b_grid[x:x + w, y:y + h],
+                # one wider because of alternating columns
+                c_grid[x:x + w + 1, y:y + h],
+                table,
+            )
             c += cel.span.x
 
 
@@ -240,6 +287,10 @@ class Table(Stylable, _UserList[Row]):
         self.padding = self.padding or _Padding(3, 0)
         self.halign = self.halign or "left"
         self.valign = self.valign or "top"
+        self.fg = self.fg or _NoColor
+        self.bg = self.bg or _NoColor
+        self.border_fg = self.border_fg or _NoColor
+        self.border_bg = self.border_bg or _NoColor
 
     @property
     def size(self) -> _Point:
@@ -265,8 +316,6 @@ class Table(Stylable, _UserList[Row]):
 
     def _render(self) -> _Grid[str]:
         self._cascade_styles()
-        grid = _Grid[str]()
-        b_grid = _Grid[_Con]()
         rc_sizes = self._get_rc_sizes()
         width, height = sum(rc_sizes.cols), sum(rc_sizes.rows)
         grid = _Grid.full(
@@ -277,11 +326,17 @@ class Table(Stylable, _UserList[Row]):
             (width + self.border_style.w, height + self.border_style.h),
             _Con.N,
         )
+        # 1 larger because each column in grid/b_grid is sandwiched between 2 columns in c_grid
+        c_grid = _Grid.full(
+            (width + self.border_style.w + 1, height + self.border_style.h),
+            "",
+        )
         for r, row in enumerate(self):
-            row.render(grid, b_grid, self, rc_sizes, r)
+            row.render(grid, b_grid, c_grid, self, rc_sizes, r)
 
         self._fill_borders(grid, b_grid)
-        return grid
+        grid[-1] = grid[-1] + _RESET
+        return c_grid[:-1, :] + grid
 
     def _get_rc_sizes(self) -> _RCSizes:
         w, h = self.size

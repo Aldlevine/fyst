@@ -145,6 +145,23 @@ class Grid(_UserList[list[T]]):
             ])
         return Grid[T](data)
 
+    def __add__(self, other: Grid[T] | T) -> Grid[T]:
+        _, other = self._broadcast(_View(), other)
+        if self.size != other.size:
+            raise IndexError
+        if self.size.x == 0 or self.size.y == 0:
+            return self.copy()
+        data: list[list[T]] = []
+        vself = self._get_view_data()
+        vother = other._get_view_data()
+        for i, col in enumerate(vself):
+            other_col = vother[i]
+            data.append([
+                a + b  # type: ignore
+                for a, b in zip(col, other_col)
+            ])
+        return Grid[T](data)
+
     def __repr__(self) -> str:
         l: list[str] = []
         vself = self._get_view_data()

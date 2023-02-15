@@ -1,15 +1,22 @@
 from fyst import Cel, Row, Table
+from fyst.color import NoColor, delete_colors
 from fyst.grid import Grid
 from fyst.style import BASIC_STYLE, BOX_STYLE
+
 
 
 def table_example() -> Table:
     return Table(
         Row(
             None,
-            Cel("Format You Some Tables", span=(4, 1)),
+            Cel(
+                "Format You Some Tables",
+                span=(4, 1),
+                bg=NoColor,
+                fg=NoColor,
+            ),
             border=0,
-            padding=(0, 1),
+            padding=(0, 0, 0, 2),
         ),
         [None, "F", "Y", "S", "T"],
         ["F", "Format", "You", "Some", "Tables"],
@@ -18,6 +25,10 @@ def table_example() -> Table:
         ["T", "Tables", "Format", "You", "Some"],
         padding=(1, 0),
         halign="middle",
+        bg=0x330000,
+        border_bg=0x330000,
+        fg=0x00ff00,
+        border_fg=0x00ff00,
     )
 
 

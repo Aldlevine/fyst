@@ -11,6 +11,8 @@ from typing import TypeVar as _TypeVar
 
 from typing_extensions import NotRequired as _NotRequired
 
+from .color import Color as _Color
+
 V = _TypeVar("V")
 
 
@@ -59,12 +61,17 @@ _BorderArg = Border | tuple[_border, _border, _border,
 Valign = _Literal["top"] | _Literal["middle"] | _Literal["bottom"]
 Halign = _Literal["left"] | _Literal["middle"] | _Literal["right"]
 
+ColorArg = _Color | int | tuple[int, int, int]
 
 class StyleArg(_TypedDict):
     padding: _NotRequired[_PaddingArg]
     border: _NotRequired[_BorderArg]
     halign: _NotRequired[Halign]
     valign: _NotRequired[Valign]
+    fg: _NotRequired[ColorArg]
+    bg: _NotRequired[ColorArg]
+    border_fg: _NotRequired[ColorArg]
+    border_bg: _NotRequired[ColorArg]
 
 
 class StyleOpt(_TypedDict):
@@ -72,6 +79,10 @@ class StyleOpt(_TypedDict):
     border: _Optional[Border]
     halign: _Optional[Halign]
     valign: _Optional[Valign]
+    fg: _Optional[_Color]
+    bg: _Optional[_Color]
+    border_fg: _Optional[_Color]
+    border_bg: _Optional[_Color]
 
 
 class Style(_NamedTuple):
@@ -79,6 +90,10 @@ class Style(_NamedTuple):
     border: Border
     halign: Halign
     valign: Valign
+    fg: _Color
+    bg: _Color
+    border_fg: _Color
+    border_bg: _Color
 
 
 class Stylable:
@@ -98,6 +113,10 @@ class Stylable:
         self.valign = style["valign"] if "valign" in style else None
         """The element's valign
         """
+        self.fg = style["fg"] if "fg" in style else None
+        self.bg = style["bg"] if "bg" in style else None
+        self.border_fg = style["border_fg"] if "border_fg" in style else None
+        self.border_bg = style["border_bg"] if "border_bg" in style else None
 
     def _cascade_style(self, *parents: Stylable) -> None:
         style = {f: getattr(self, f) for f in Style._fields}
@@ -140,6 +159,39 @@ class Stylable:
         elif isinstance(border, int):
             border = Border(border)
         self._border = border
+
+    @property
+    def fg(self) -> _Optional[_Color]:
+        return self._fg
+
+    @fg.setter
+    def fg(self, v: _Optional[ColorArg]) -> None:
+        self._fg = _Color(v) if v is not None else None
+
+    @property
+    def bg(self) -> _Optional[_Color]:
+        return self._bg
+
+    @bg.setter
+    def bg(self, v: _Optional[ColorArg]) -> None:
+        self._bg = _Color(v) if v is not None else None
+
+    @property
+    def border_fg(self) -> _Optional[_Color]:
+        return self._border_fg
+
+    @border_fg.setter
+    def border_fg(self, v: _Optional[ColorArg]) -> None:
+        self._border_fg = _Color(v) if v is not None else None
+
+    @property
+    def border_bg(self) -> _Optional[_Color]:
+        return self._border_bg
+
+    @border_bg.setter
+    def border_bg(self, v: _Optional[ColorArg]) -> None:
+        self._border_bg = _Color(v) if v is not None else None
+
 
 
 @_dataclass
